@@ -1,0 +1,5 @@
+{
+  "name": "AI Placement Analyzer",
+  "description": "Upload a CSV of student profiles to analyze their post-graduation placements. The app uses AI to identify their first job, company, and estimated salary after graduation, then allows you to download the enriched data.",
+  "requestFramePermissions": []
+}

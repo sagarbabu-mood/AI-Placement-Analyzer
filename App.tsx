@@ -287,9 +287,10 @@ const App: React.FC = () => {
             { Stat: 'Number of Companies Recruiting', Value: stats.uniqueCompaniesCount },
         ];
     
-        const recruitersSection = stats.allRecruiters.map(([company, hires]) => ({
+        const recruitersSection = stats.allRecruiters.map(([company, hires, salary]) => ({
             'Company': company,
             'Number of Hires': hires,
+            'Salary Offered (LPA)': salary,
         }));
         
         const salarySection = Object.entries(stats.salaryBrackets).map(([bracket, count]) => ({

@@ -123,15 +123,36 @@ export const calculatePlacementStats = (data: ProcessedStudentProfile[]) => {
     const totalPlaced = placedStudents.length;
     const placementRate = totalStudents > 0 ? ((totalPlaced / totalStudents) * 100).toFixed(1) : '0.0';
 
-    const companyCounts = placedStudents.reduce((acc, student) => {
+    const companyDetails = placedStudents.reduce((acc, student) => {
         const company = student.placedCompany?.trim();
         if (company) {
-             acc[company] = (acc[company] || 0) + 1;
+            if (!acc[company]) {
+                acc[company] = { hires: 0, salaries: [] };
+            }
+            acc[company].hires++;
+            const lpa = parseSalaryToLPA(student.estimatedSalary);
+            if (lpa !== null) {
+                acc[company].salaries.push(lpa);
+            }
         }
         return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { hires: number; salaries: number[] }>);
 
-    const allRecruiters = Object.entries(companyCounts).sort(([, a], [, b]) => b - a);
+    const allRecruiters = Object.entries(companyDetails)
+        .map(([company, details]) => {
+            let salaryDisplay = 'N/A';
+            if (details.salaries.length > 0) {
+                if (details.hires <= 5) {
+                    salaryDisplay = details.salaries.join(', ') + ' LPA';
+                } else {
+                    const avgSalary = details.salaries.reduce((sum, s) => sum + s, 0) / details.salaries.length;
+                    salaryDisplay = `Avg. ${avgSalary.toFixed(1)} LPA`;
+                }
+            }
+            return [company, details.hires, salaryDisplay] as [string, number, string];
+        })
+        .sort((a, b) => b[1] - a[1]);
+
     const uniqueCompaniesCount = allRecruiters.length;
 
     const salaryBrackets = {
@@ -185,7 +206,7 @@ export const generateCollegeReport = async (data: ProcessedStudentProfile[], api
 
     const stats = calculatePlacementStats(data);
 
-    const recruitersTable = stats.allRecruiters.map(([company, hires]) => `| ${company} | ${hires} |`).join('\n');
+    const recruitersTable = stats.allRecruiters.map(([company, hires, salary]) => `| ${company} | ${hires} | ${salary} |`).join('\n');
     const salaryTable = Object.entries(stats.salaryBrackets).map(([bracket, count]) => `| ${bracket} | ${count} |`).join('\n');
 
     const prompt = `
@@ -206,11 +227,11 @@ export const generateCollegeReport = async (data: ProcessedStudentProfile[], api
         - Number of Companies Recruiting: ${stats.uniqueCompaniesCount}
         
         ## Recruiter Participation
-        (Provide a brief introductory sentence, then present the full list of companies and the number of students they hired in a markdown table. Ensure the table is sorted with the company that hired the most at the top.)
+        (Provide a brief introductory sentence. The 'Salary Offered' column shows individual salaries for companies hiring 5 or fewer students, and the average salary for companies hiring more than 5.)
         
         **All Recruiting Companies:**
-        | Company | Number of Hires |
-        |---|---|
+        | Company | Number of Hires | Salary Offered (LPA) |
+        |---|---|---|
         ${recruitersTable}
         
         ## Salary Insights

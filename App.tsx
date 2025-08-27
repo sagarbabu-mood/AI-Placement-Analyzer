@@ -1,12 +1,13 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { StudentProfile, ProcessedStudentProfile } from './types';
 import { analyzeStudentPlacementsBatch, generateCollegeReport, calculatePlacementStats } from './services/geminiService';
 import FileUpload from './components/FileUpload';
 import ResultsTable from './components/ResultsTable';
 import ProgressBar from './components/ProgressBar';
-import { DownloadIcon, DocumentReportIcon, SparklesIcon } from './components/icons';
+import { DownloadIcon, DocumentReportIcon, SparklesIcon, SettingsIcon } from './components/icons';
 import CollegeReport from './components/CollegeReport';
+import ApiKeyManager from './components/ApiKeyManager';
 
 declare const Papa: any;
 
@@ -14,8 +15,8 @@ const getFriendlyErrorMessage = (error: any): string => {
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
         return 'Network request failed. This may be a Cross-Origin Resource Sharing (CORS) issue or a network problem. Please check the browser console for more details.';
     }
-    if (error.message && error.message.includes('API_KEY_INVALID')) {
-        return 'The provided API Key is invalid. Please check your environment configuration.';
+    if (error.message && error.message.includes('API key not valid')) {
+        return 'The provided API Key is invalid. Please go to Settings to correct it.';
     }
     return error.message || 'An unknown error occurred.';
 };
@@ -32,6 +33,17 @@ const App: React.FC = () => {
     const [collegeReport, setCollegeReport] = useState<string | null>(null);
     const [isGeneratingReport, setIsGeneratingReport] = useState<boolean>(false);
     const [reportError, setReportError] = useState<string | null>(null);
+    
+    const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini-api-key') || '');
+    const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (apiKey) {
+            localStorage.setItem('gemini-api-key', apiKey);
+        } else {
+            localStorage.removeItem('gemini-api-key');
+        }
+    }, [apiKey]);
 
     const handleFileChange = (selectedFile: File) => {
         setFile(selectedFile);
@@ -50,7 +62,7 @@ const App: React.FC = () => {
             const batch = data.slice(i, i + batchSize);
             
             try {
-                const placementInfos = await analyzeStudentPlacementsBatch(batch);
+                const placementInfos = await analyzeStudentPlacementsBatch(batch, apiKey);
                 
                 const processedBatch = batch.map((student, index) => {
                     return { ...student, ...(placementInfos[index] || { placedRole: 'Error', placedCompany: 'Processing Error', estimatedSalary: 'Error' }) };
@@ -72,6 +84,12 @@ const App: React.FC = () => {
     const handleProcess = useCallback(() => {
         if (!file) {
             setError("Please select a CSV file first.");
+            return;
+        }
+        
+        if (!apiKey) {
+            setError("Please set your Google AI API key in the settings before analyzing.");
+            setIsSettingsOpen(true);
             return;
         }
 
@@ -100,7 +118,7 @@ const App: React.FC = () => {
                 setIsLoading(false);
             }
         });
-    }, [file]);
+    }, [file, apiKey]);
 
     const handleDownload = () => {
         if (processedData.length === 0) {
@@ -120,6 +138,13 @@ const App: React.FC = () => {
     };
 
     const handleGenerateReport = async () => {
+        if (!apiKey) {
+            setReportError("Please set your Google AI API key in the settings before generating a report.");
+            setIsSettingsOpen(true);
+            setActiveTab('collegeReport');
+            return;
+        }
+        
         if (processedData.length === 0) {
             setReportError("No processed data available to generate a report.");
             setActiveTab('collegeReport');
@@ -132,7 +157,7 @@ const App: React.FC = () => {
         setActiveTab('collegeReport');
 
         try {
-            const report = await generateCollegeReport(processedData);
+            const report = await generateCollegeReport(processedData, apiKey);
             setCollegeReport(report);
         } catch (e: any) {
             setReportError(getFriendlyErrorMessage(e));
@@ -185,12 +210,26 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans">
+            {isSettingsOpen && (
+                <ApiKeyManager
+                    currentKey={apiKey}
+                    onSave={setApiKey}
+                    onClose={() => setIsSettingsOpen(false)}
+                />
+            )}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
                 <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 pb-6 border-b border-gray-200 dark:border-gray-700">
                     <div>
                         <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">AI Placement Analyzer</h1>
                         <p className="mt-2 text-lg text-gray-500 dark:text-gray-400">Analyze student placements and generate college reports with AI.</p>
                     </div>
+                     <button 
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="flex-shrink-0 p-2 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-900"
+                        aria-label="Open settings"
+                    >
+                        <SettingsIcon className="w-6 h-6" />
+                    </button>
                 </header>
 
                 <div className="my-8">

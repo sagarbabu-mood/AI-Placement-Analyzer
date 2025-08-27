@@ -2,9 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { StudentProfile, PlacementInfo, ProcessedStudentProfile } from "../types";
 
-// Initialize the Google AI client once with the API key from environment variables
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-
 const placementInfoSchema = {
     type: Type.OBJECT,
     properties: {
@@ -21,7 +18,12 @@ const batchSchema = {
 };
 
 
-export const analyzeStudentPlacementsBatch = async (students: StudentProfile[]): Promise<PlacementInfo[]> => {
+export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], apiKey: string): Promise<PlacementInfo[]> => {
+    if (!apiKey) {
+        throw new Error("API Key is missing. Please set it in the settings.");
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
     // Stringify student data for the prompt
     const studentDataString = JSON.stringify(students.map(s => {
         // Create a concise profile for the prompt
@@ -168,7 +170,12 @@ export const calculatePlacementStats = (data: ProcessedStudentProfile[]) => {
 };
 
 
-export const generateCollegeReport = async (data: ProcessedStudentProfile[]): Promise<string> => {
+export const generateCollegeReport = async (data: ProcessedStudentProfile[], apiKey: string): Promise<string> => {
+    if (!apiKey) {
+        throw new Error("API Key is missing. Please set it in the settings.");
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
     const stats = calculatePlacementStats(data);
 
     const recruitersTable = stats.allRecruiters.map(([company, hires]) => `| ${company} | ${hires} |`).join('\n');

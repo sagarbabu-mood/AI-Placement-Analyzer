@@ -5,7 +5,7 @@ import { analyzeStudentPlacementsBatch, generateCollegeReport, calculatePlacemen
 import FileUpload from './components/FileUpload';
 import ResultsTable from './components/ResultsTable';
 import ProgressBar from './components/ProgressBar';
-import { DownloadIcon, DocumentReportIcon, SparklesIcon, SettingsIcon } from './components/icons';
+import { DownloadIcon, DocumentReportIcon, SparklesIcon, SettingsIcon, AnalyzeIcon } from './components/icons';
 import CollegeReport from './components/CollegeReport';
 import ApiKeyManager from './components/ApiKeyManager';
 
@@ -36,6 +36,7 @@ const App: React.FC = () => {
     const [collegeReport, setCollegeReport] = useState<string | null>(null);
     const [isGeneratingReport, setIsGeneratingReport] = useState<boolean>(false);
     const [reportError, setReportError] = useState<string | null>(null);
+    const [reportFile, setReportFile] = useState<File | null>(null);
     
     const [apiKeys, setApiKeys] = useState<string[]>(() => {
         const savedKeys = localStorage.getItem('gemini-api-keys');
@@ -60,6 +61,13 @@ const App: React.FC = () => {
         setError(null);
         setCollegeReport(null);
         setReportError(null);
+        setReportFile(null);
+    };
+
+    const handleReportFileChange = (selectedFile: File) => {
+        setReportFile(selectedFile);
+        setReportError(null);
+        setCollegeReport(null);
     };
 
     const processInBatches = async (data: StudentProfile[]) => {
@@ -200,6 +208,70 @@ const App: React.FC = () => {
         setIsGeneratingReport(false);
     };
 
+    const handleGenerateReportFromFile = useCallback(async () => {
+        if (!reportFile) {
+            setReportError("Please select an analyzed CSV file first.");
+            return;
+        }
+
+        if (apiKeys.length === 0) {
+            setReportError("Please set your Google AI API key(s) in the settings before generating a report.");
+            setIsSettingsOpen(true);
+            return;
+        }
+
+        setIsGeneratingReport(true);
+        setReportError(null);
+        setCollegeReport(null);
+
+        Papa.parse(reportFile, {
+            header: true,
+            skipEmptyLines: true,
+            complete: async (results: { data: ProcessedStudentProfile[], meta: { fields: string[] } }) => {
+                const requiredColumns = ['placedRole', 'placedCompany', 'estimatedSalary'];
+                const headers = results.meta.fields || [];
+                const hasRequiredColumns = requiredColumns.every(col => headers.includes(col));
+
+                if (!hasRequiredColumns) {
+                    setReportError(`The uploaded CSV is missing one or more required columns for report generation: ${requiredColumns.join(', ')}.`);
+                    setIsGeneratingReport(false);
+                    return;
+                }
+
+                const data = results.data;
+                if (data.length === 0) {
+                    setReportError("Analyzed CSV file appears to be empty or invalid.");
+                    setIsGeneratingReport(false);
+                    return;
+                }
+
+                setProcessedData(data); // Set data for download function
+
+                let success = false;
+                let keyIndex = 0; // Start with the first key for this operation
+
+                while (!success && keyIndex < apiKeys.length) {
+                    try {
+                        const report = await generateCollegeReport(data, apiKeys[keyIndex]);
+                        setCollegeReport(report);
+                        success = true;
+                    } catch (e: any) {
+                        console.error(`Report generation from file failed with key index ${keyIndex}:`, e);
+                        keyIndex++;
+                        if (keyIndex >= apiKeys.length) {
+                            setReportError(getFriendlyErrorMessage(e));
+                        }
+                    }
+                }
+                setIsGeneratingReport(false);
+            },
+            error: (err: Error) => {
+                setReportError(`CSV Parsing Error: ${err.message}`);
+                setIsGeneratingReport(false);
+            }
+        });
+    }, [reportFile, apiKeys]);
+
     const handleDownloadReport = () => {
         if (processedData.length === 0) {
             setReportError("No processed data available to download a report.");
@@ -293,7 +365,6 @@ const App: React.FC = () => {
                                         ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                                 } flex items-center gap-2 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-lg transition-colors`}
-                                disabled={processedData.length === 0 && !collegeReport}
                             >
                                 <DocumentReportIcon className="w-6 h-6" />
                                 College Report
@@ -306,7 +377,15 @@ const App: React.FC = () => {
 
                 {activeTab === 'analyzer' && (
                     <div className="space-y-8">
-                        <FileUpload onFileChange={handleFileChange} onProcess={handleProcess} isLoading={isLoading} disabled={!file} />
+                        <FileUpload 
+                            onFileChange={handleFileChange} 
+                            onProcess={handleProcess} 
+                            isLoading={isLoading} 
+                            disabled={!file}
+                            buttonText="Analyze Placements"
+                            buttonIcon={<AnalyzeIcon className="w-6 h-6" />}
+                            loadingText="Analyzing..."
+                        />
                         
                         {isLoading && <ProgressBar current={progress.current} total={progress.total} />}
                         
@@ -347,9 +426,33 @@ const App: React.FC = () => {
                         ) : collegeReport ? (
                             <CollegeReport report={collegeReport} onDownloadReport={handleDownloadReport} />
                         ) : (
-                            <div className="text-center p-8 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
-                                <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200">No Report Generated</h3>
-                                <p className="text-gray-600 dark:text-gray-400 mt-2">Go to the 'Placement Analyzer' tab, process a file, and click 'Generate Report' to see the AI analysis here.</p>
+                            <div className="space-y-6 text-center p-8 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
+                                <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Generate Report from a Pre-Analyzed File</h3>
+                                <p className="text-gray-600 dark:text-gray-400 mt-2">
+                                    Upload a CSV file that has already been processed (must include 'placedRole', 'placedCompany', and 'estimatedSalary' columns).
+                                </p>
+                                <div className="max-w-2xl mx-auto pt-4">
+                                    <FileUpload 
+                                        onFileChange={handleReportFileChange} 
+                                        onProcess={handleGenerateReportFromFile} 
+                                        isLoading={isGeneratingReport} 
+                                        disabled={!reportFile}
+                                        buttonText="Generate Report from CSV"
+                                        buttonIcon={<DocumentReportIcon className="w-6 h-6" />}
+                                        loadingText="Generating..."
+                                    />
+                                </div>
+                                <div className="relative py-6">
+                                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                        <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+                                    </div>
+                                    <div className="relative flex justify-center">
+                                        <span className="px-3 bg-gray-100 dark:bg-gray-800/50 text-sm font-semibold text-gray-500 dark:text-gray-400">OR</span>
+                                    </div>
+                                </div>
+                                <p className="text-gray-600 dark:text-gray-400">
+                                    Go to the 'Placement Analyzer' tab, process a file, and then click 'Generate Report' to see the AI analysis here.
+                                </p>
                             </div>
                         )}
                     </div>

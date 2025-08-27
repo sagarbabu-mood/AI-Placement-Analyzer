@@ -31,19 +31,19 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
         for (let i = 0; i < 5; i++) { // Check for up to 5 experiences
             if (s[`experience_title_${i}`]) {
                 experiences.push({
-                    title: s[`experience_title_${i}`],
-                    company: s[`experience_company_${i}`],
-                    description: s[`experience_description_${i}`]?.substring(0, 150), // Truncate for brevity
-                    from: s[`experience_from_${i}`],
-                    to: s[`experience_to_${i}`],
+                    title: s[`experience_title_${i}`] ?? 'N/A',
+                    company: s[`experience_company_${i}`] ?? 'N/A',
+                    description: s[`experience_description_${i}`]?.substring(0, 150) ?? 'N/A',
+                    from: s[`experience_from_${i}`] ?? 'N/A',
+                    to: s[`experience_to_${i}`] ?? 'N/A',
                 });
             }
         }
         return {
-            name: `${s.first_name} ${s.last_name}`,
-            headline: s.headline,
-            education: s.education_school_1,
-            graduation_date: s.education_date_1,
+            name: `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim(),
+            headline: s.headline ?? 'N/A',
+            education: s.education_school_1 ?? 'N/A',
+            graduation_date: s.education_date_1 ?? 'N/A',
             experiences: experiences,
         };
     }), null, 2);
@@ -71,7 +71,12 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
             },
         });
         
-        const jsonText = response.text.trim();
+        const jsonText = response?.text?.trim();
+        if (!jsonText) {
+            console.error("AI response was empty or invalid.");
+            return students.map(() => ({ placedRole: 'Error', placedCompany: 'AI Response Error', estimatedSalary: 'Error' }));
+        }
+        
         const placements = JSON.parse(jsonText);
 
         // Ensure the output is an array of the correct length
@@ -119,8 +124,10 @@ export const calculatePlacementStats = (data: ProcessedStudentProfile[]) => {
     const placementRate = totalStudents > 0 ? ((totalPlaced / totalStudents) * 100).toFixed(1) : '0.0';
 
     const companyCounts = placedStudents.reduce((acc, student) => {
-        const company = student.placedCompany.trim();
-        acc[company] = (acc[company] || 0) + 1;
+        const company = student.placedCompany?.trim();
+        if (company) {
+             acc[company] = (acc[company] || 0) + 1;
+        }
         return acc;
     }, {} as Record<string, number>);
 
@@ -224,6 +231,9 @@ export const generateCollegeReport = async (data: ProcessedStudentProfile[], api
             contents: prompt,
         });
 
+        if (!response?.text) {
+            throw new Error("Received an empty report from the AI service. This might be due to a network issue or content filter.");
+        }
         return response.text;
     } catch (error) {
         console.error("Error generating college report:", error);

@@ -3,16 +3,16 @@ import React, { useState } from 'react';
 import { SettingsIcon } from './icons';
 
 interface ApiKeyManagerProps {
-    currentKey: string;
-    onSave: (key: string) => void;
+    currentKeys: string[];
+    onSave: (keys: string) => void;
     onClose: () => void;
 }
 
-const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ currentKey, onSave, onClose }) => {
-    const [key, setKey] = useState(currentKey);
+const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ currentKeys, onSave, onClose }) => {
+    const [keys, setKeys] = useState(currentKeys.join('\n'));
 
     const handleSave = () => {
-        onSave(key);
+        onSave(keys);
         onClose();
     };
 
@@ -27,23 +27,23 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ currentKey, onSave, onClo
                 </div>
                 <div className="p-6">
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                        Your Google AI API key is required to analyze placements. It is stored only in your browser's local storage and never sent to our servers.
+                        Enter your Google AI API keys below, one per line. The app will automatically rotate through them if you hit rate limits. Keys are stored only in your browser.
                     </p>
                     <div className="mb-4">
                         <label htmlFor="api-key-input" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Google AI API Key
+                            Google AI API Keys (one per line)
                         </label>
-                        <input
-                            type="password"
+                        <textarea
                             id="api-key-input"
-                            value={key}
-                            onChange={(e) => setKey(e.target.value)}
-                            placeholder="Enter your API key"
-                            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            value={keys}
+                            onChange={(e) => setKeys(e.target.value)}
+                            placeholder="Enter one API key per line"
+                            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 font-mono text-sm h-32 resize-y"
+                            rows={5}
                         />
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                        You can get your key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Google AI Studio</a>.
+                        You can get keys from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Google AI Studio</a>.
                     </p>
                 </div>
                 <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3 rounded-b-lg">
@@ -57,7 +57,7 @@ const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ currentKey, onSave, onClo
                         onClick={handleSave}
                         className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-900"
                     >
-                        Save Key
+                        Save Keys
                     </button>
                 </div>
             </div>

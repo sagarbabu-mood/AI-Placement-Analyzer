@@ -16,7 +16,10 @@ const getFriendlyErrorMessage = (error: any): string => {
         return 'Network request failed. This may be a Cross-Origin Resource Sharing (CORS) issue or a network problem. Please check the browser console for more details.';
     }
     if (error.message && error.message.includes('API key not valid')) {
-        return 'The provided API Key is invalid. Please go to Settings to correct it.';
+        return 'An API Key is invalid or has expired. Please check your keys in Settings.';
+    }
+    if (error.toString().includes('429')) {
+        return 'All API keys have hit their rate limits. Please wait a while before trying again or add new keys.';
     }
     return error.message || 'An unknown error occurred.';
 };
@@ -34,16 +37,21 @@ const App: React.FC = () => {
     const [isGeneratingReport, setIsGeneratingReport] = useState<boolean>(false);
     const [reportError, setReportError] = useState<string | null>(null);
     
-    const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini-api-key') || '');
+    const [apiKeys, setApiKeys] = useState<string[]>(() => {
+        const savedKeys = localStorage.getItem('gemini-api-keys');
+        return savedKeys ? JSON.parse(savedKeys) : [];
+    });
+    const [activeApiKeyIndex, setActiveApiKeyIndex] = useState<number>(0);
     const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
     useEffect(() => {
-        if (apiKey) {
-            localStorage.setItem('gemini-api-key', apiKey);
+        if (apiKeys.length > 0) {
+            localStorage.setItem('gemini-api-keys', JSON.stringify(apiKeys));
         } else {
-            localStorage.removeItem('gemini-api-key');
+            localStorage.removeItem('gemini-api-keys');
         }
-    }, [apiKey]);
+        setActiveApiKeyIndex(0); // Reset index whenever keys are updated
+    }, [apiKeys]);
 
     const handleFileChange = (selectedFile: File) => {
         setFile(selectedFile);
@@ -57,12 +65,16 @@ const App: React.FC = () => {
     const processInBatches = async (data: StudentProfile[]) => {
         const batchSize = 15;
         setProgress({ current: 0, total: data.length });
+        let keyIndex = activeApiKeyIndex;
 
         for (let i = 0; i < data.length; i += batchSize) {
             const batch = data.slice(i, i + batchSize);
             
             try {
-                const placementInfos = await analyzeStudentPlacementsBatch(batch, apiKey);
+                const currentKey = apiKeys[keyIndex];
+                if (!currentKey) throw new Error("All available API keys have failed.");
+
+                const placementInfos = await analyzeStudentPlacementsBatch(batch, currentKey);
                 
                 const processedBatch = batch.map((student, index) => {
                     return { ...student, ...(placementInfos[index] || { placedRole: 'Error', placedCompany: 'Processing Error', estimatedSalary: 'Error' }) };
@@ -71,14 +83,24 @@ const App: React.FC = () => {
                 setProcessedData(prev => [...prev, ...processedBatch]);
                 
             } catch (e: any) {
-                console.error("Error processing batch:", e);
-                setError(getFriendlyErrorMessage(e));
-                setIsLoading(false);
-                return; // Stop processing further batches on error
-            } finally {
-                setProgress(prev => ({ ...prev, current: Math.min(prev.current + batch.length, data.length) }));
+                console.error(`Key at index ${keyIndex} failed:`, e);
+                const isKeyError = e.message.includes('API key not valid') || e.toString().includes('429');
+                
+                if (isKeyError && keyIndex + 1 < apiKeys.length) {
+                    keyIndex++; // Move to the next key
+                    i -= batchSize; // Crucial: decrement i to retry the current batch
+                    console.log(`Retrying batch with new key index ${keyIndex}`);
+                    continue; // Skip progress update and restart loop for the same batch
+                } else {
+                    setError(getFriendlyErrorMessage(e));
+                    setIsLoading(false);
+                    return; // Stop processing entirely
+                }
             }
+            
+            setProgress(prev => ({ ...prev, current: Math.min(prev.current + batch.length, data.length) }));
         }
+        setActiveApiKeyIndex(keyIndex); // Save the last successfully used key index for the next run
     };
 
     const handleProcess = useCallback(() => {
@@ -87,8 +109,8 @@ const App: React.FC = () => {
             return;
         }
         
-        if (!apiKey) {
-            setError("Please set your Google AI API key in the settings before analyzing.");
+        if (apiKeys.length === 0) {
+            setError("Please set your Google AI API key(s) in the settings before analyzing.");
             setIsSettingsOpen(true);
             return;
         }
@@ -98,6 +120,7 @@ const App: React.FC = () => {
         setProcessedData([]);
         setCollegeReport(null);
         setReportError(null);
+        setActiveApiKeyIndex(0); // Start with the first key
 
         Papa.parse(file, {
             header: true,
@@ -118,7 +141,7 @@ const App: React.FC = () => {
                 setIsLoading(false);
             }
         });
-    }, [file, apiKey]);
+    }, [file, apiKeys]);
 
     const handleDownload = () => {
         if (processedData.length === 0) {
@@ -138,8 +161,8 @@ const App: React.FC = () => {
     };
 
     const handleGenerateReport = async () => {
-        if (!apiKey) {
-            setReportError("Please set your Google AI API key in the settings before generating a report.");
+        if (apiKeys.length === 0) {
+            setReportError("Please set your Google AI API key(s) in the settings before generating a report.");
             setIsSettingsOpen(true);
             setActiveTab('collegeReport');
             return;
@@ -156,14 +179,25 @@ const App: React.FC = () => {
         setCollegeReport(null);
         setActiveTab('collegeReport');
 
-        try {
-            const report = await generateCollegeReport(processedData, apiKey);
-            setCollegeReport(report);
-        } catch (e: any) {
-            setReportError(getFriendlyErrorMessage(e));
-        } finally {
-            setIsGeneratingReport(false);
+        let success = false;
+        let keyIndex = activeApiKeyIndex;
+
+        while (!success && keyIndex < apiKeys.length) {
+            try {
+                const report = await generateCollegeReport(processedData, apiKeys[keyIndex]);
+                setCollegeReport(report);
+                success = true;
+                setActiveApiKeyIndex(keyIndex); // Remember the key that worked
+            } catch (e: any) {
+                console.error(`Report generation failed with key index ${keyIndex}:`, e);
+                keyIndex++;
+                if (keyIndex >= apiKeys.length) {
+                    // Last key failed, show error
+                    setReportError(getFriendlyErrorMessage(e));
+                }
+            }
         }
+        setIsGeneratingReport(false);
     };
 
     const handleDownloadReport = () => {
@@ -208,12 +242,17 @@ const App: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    const handleSaveKeys = (keysString: string) => {
+        const keys = keysString.split('\n').map(k => k.trim()).filter(Boolean);
+        setApiKeys(keys);
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans">
             {isSettingsOpen && (
                 <ApiKeyManager
-                    currentKey={apiKey}
-                    onSave={setApiKey}
+                    currentKeys={apiKeys}
+                    onSave={handleSaveKeys}
                     onClose={() => setIsSettingsOpen(false)}
                 />
             )}
@@ -225,10 +264,11 @@ const App: React.FC = () => {
                     </div>
                      <button 
                         onClick={() => setIsSettingsOpen(true)}
-                        className="flex-shrink-0 p-2 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-900"
-                        aria-label="Open settings"
+                        className="mt-4 sm:mt-0 flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-semibold rounded-lg shadow-sm hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-900 transition-colors"
+                        aria-label="Open API key settings"
                     >
-                        <SettingsIcon className="w-6 h-6" />
+                        <SettingsIcon className="w-5 h-5" />
+                        API Key Settings
                     </button>
                 </header>
 

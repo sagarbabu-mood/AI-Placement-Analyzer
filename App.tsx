@@ -12,16 +12,22 @@ import ApiKeyManager from './components/ApiKeyManager';
 declare const Papa: any;
 
 const getFriendlyErrorMessage = (error: any): string => {
-    if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        return 'Network request failed. This may be a Cross-Origin Resource Sharing (CORS) issue or a network problem. Please check the browser console for more details.';
+    const errorMessage = error.message || error.toString();
+    
+    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_INTERNET_DISCONNECTED') || errorMessage.includes('ERR_NAME_NOT_RESOLVED')) {
+        return 'Network request failed. Please check your internet connection and try again. This can also be caused by a browser extension blocking requests.';
     }
-    if (error.message && error.message.includes('API key not valid')) {
+    if (errorMessage.includes('API key not valid')) {
         return 'An API Key is invalid or has expired. Please check your keys in Settings.';
     }
-    if (error.toString().includes('429')) {
+    if (errorMessage.includes('429')) {
         return 'All API keys have hit their rate limits. Please wait a while before trying again or add new keys.';
     }
-    return error.message || 'An unknown error occurred.';
+    if (errorMessage.includes('Received an empty report') || errorMessage.includes('Cannot read properties of undefined')) {
+        return 'The AI service returned an incomplete response, which can happen with network issues or if the model output was filtered. Please try again.';
+    }
+
+    return errorMessage;
 };
 
 const App: React.FC = () => {
@@ -238,21 +244,27 @@ const App: React.FC = () => {
                     return;
                 }
 
-                const data = results.data;
-                if (data.length === 0) {
+                if (results.data.length === 0) {
                     setReportError("Analyzed CSV file appears to be empty or invalid.");
                     setIsGeneratingReport(false);
                     return;
                 }
+                
+                // Sanitize data to prevent issues from CSV parsing quirks (e.g., numbers as strings)
+                const sanitizedData = results.data.map(row => ({
+                    ...row,
+                    placedCompany: String(row.placedCompany || '').trim(),
+                    estimatedSalary: String(row.estimatedSalary || '').trim(),
+                }));
 
-                setProcessedData(data); // Set data for download function
+                setProcessedData(sanitizedData); // Set data for download function
 
                 let success = false;
                 let keyIndex = 0; // Start with the first key for this operation
 
                 while (!success && keyIndex < apiKeys.length) {
                     try {
-                        const report = await generateCollegeReport(data, apiKeys[keyIndex]);
+                        const report = await generateCollegeReport(sanitizedData, apiKeys[keyIndex]);
                         setCollegeReport(report);
                         success = true;
                     } catch (e: any) {

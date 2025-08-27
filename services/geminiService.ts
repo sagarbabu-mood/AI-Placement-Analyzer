@@ -95,30 +95,44 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
 };
 
 export const parseSalaryToLPA = (salary: string): number | null => {
-    if (!salary || typeof salary !== 'string') return null;
+    if (!salary || typeof salary !== 'string' || salary.toLowerCase().trim() === 'n/a') {
+        return null;
+    }
 
-    const cleanedSalary = salary.toLowerCase().replace(/lpa|lakhs|per annum/g, '').trim();
+    // This regex extracts all floating-point or integer numbers from the string.
+    const numbers = salary.match(/\d+\.?\d*/g);
+
+    if (!numbers) {
+        return null; // No numbers found in the string.
+    }
+
+    // Convert found string numbers to actual numbers.
+    const parsedNumbers = numbers.map(parseFloat);
+
+    if (parsedNumbers.length === 0) {
+        return null;
+    }
     
-    // Case 1: Range (e.g., "8-10", "12 - 15")
-    const rangeMatch = cleanedSalary.match(/(\d+\.?\d*)\s*-\s*(\d+\.?\d*)/);
-    if (rangeMatch) {
-        const lower = parseFloat(rangeMatch[1]);
-        const upper = parseFloat(rangeMatch[2]);
-        return (lower + upper) / 2; // Return the average of the range
+    if (parsedNumbers.length === 1) {
+        return parsedNumbers[0]; // A single salary number was found.
+    }
+    
+    // If multiple numbers are found (e.g., in a range "8-10 LPA"),
+    // we take the first two and calculate their average.
+    if (parsedNumbers.length >= 2) {
+        return (parsedNumbers[0] + parsedNumbers[1]) / 2;
     }
 
-    // Case 2: Single number (e.g., "15", "5.5")
-    const singleMatch = cleanedSalary.match(/^(\d+\.?\d*)$/);
-    if (singleMatch) {
-        return parseFloat(singleMatch[1]);
-    }
-
-    return null; // Return null if parsing fails
+    return null; // Should not be reached, but good for safety.
 };
 
 
 export const calculatePlacementStats = (data: ProcessedStudentProfile[]) => {
-    const placedStudents = data.filter(p => p.placedCompany && p.placedCompany.toLowerCase() !== 'not placed');
+    const placedStudents = data.filter(p => 
+        p.placedCompany && 
+        p.placedCompany.toLowerCase().trim() !== 'not placed' && 
+        p.placedCompany.toLowerCase().trim() !== 'n/a'
+    );
     const totalStudents = data.length;
     const totalPlaced = placedStudents.length;
     const placementRate = totalStudents > 0 ? ((totalPlaced / totalStudents) * 100).toFixed(1) : '0.0';

@@ -1,3 +1,4 @@
+
 export interface StudentProfile {
     first_name: string;
     last_name: string;
@@ -18,6 +19,8 @@ export interface PlacementInfo {
     placedRole: string;
     placedCompany: string;
     estimatedSalary: string;
+    salaryJustification: string;
+    salaryConfidence: string;
 }
 
 export type ProcessedStudentProfile = StudentProfile & PlacementInfo;

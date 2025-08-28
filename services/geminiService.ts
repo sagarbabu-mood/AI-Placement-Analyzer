@@ -7,9 +7,11 @@ const placementInfoSchema = {
     properties: {
         placedRole: { type: Type.STRING, description: "The specific job title. Should be 'Not Placed' if no suitable role is found." },
         placedCompany: { type: Type.STRING, description: "The name of the company. Should be 'Not Placed' if no role is found." },
-        estimatedSalary: { type: Type.STRING, description: "A realistic salary range in LPA (e.g., '8-10 LPA'). Should be 'N/A' if not placed." },
+        estimatedSalary: { type: Type.STRING, description: "The researched salary range in LPA (e.g., '8-10 LPA'). Should be 'N/A' if not placed." },
+        salaryJustification: { type: Type.STRING, description: "A brief justification for the salary research, considering company tier, location, and role. E.g., 'Tier-1 tech company in a major metro'. Should be 'N/A' if not placed." },
+        salaryConfidence: { type: Type.STRING, description: "Confidence in the research ('High', 'Medium', 'Low') based on available data. Should be 'N/A' if not placed." },
     },
-    required: ["placedRole", "placedCompany", "estimatedSalary"],
+    required: ["placedRole", "placedCompany", "estimatedSalary", "salaryJustification", "salaryConfidence"],
 };
 
 const batchSchema = {
@@ -42,6 +44,8 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
         return {
             name: `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim(),
             headline: s.headline ?? 'N/A',
+            location: s.location ?? 'N/A',
+            industry: s.industry ?? 'N/A',
             education: s.education_school_1 ?? 'N/A',
             graduation_date: s.education_date_1 ?? 'N/A',
             experiences: experiences,
@@ -49,13 +53,21 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
     }), null, 2);
 
     const prompt = `
+        You are an expert recruitment analyst specializing in tech and graduate placements in India. Your task is to perform a deep-dive analysis on the following student profiles.
         Analyze the following array of student profiles. For each student, identify their first full-time post-graduation job.
         
-        IMPORTANT RULES:
+        IMPORTANT RULES for PLACEMENT IDENTIFICATION:
         1.  IGNORE internships, freelance work, contract roles, or trainee positions. Focus ONLY on the first permanent, full-time role after their graduation date.
-        2.  If no suitable full-time role is found, set placedRole and placedCompany to 'Not Placed' and estimatedSalary to 'N/A'.
-        3.  Provide a realistic salary estimate in Lakhs Per Annum (LPA) for the identified role.
-        4.  Return the output as a JSON array that strictly matches the provided schema. The array must have the same number of objects as the input array of students, in the same order.
+        2.  If no suitable full-time role is found, set placedRole and placedCompany to 'Not Placed' and all salary-related fields to 'N/A'.
+
+        IMPORTANT RULES for SALARY RESEARCH (DEEP DIVE):
+        3.  For each placed student, research and provide a likely salary range in Lakhs Per Annum (LPA).
+        4.  Your research MUST be based on a combination of factors: the company's reputation and tier (e.g., top product-based, service-based, startup), the job location (e.g., Bangalore and Hyderabad pay more than smaller cities), and the specific job role.
+        5.  Provide a brief justification for your salary research, explaining the factors you considered (e.g., 'Tier-1 tech company in a major metro').
+        6.  State your confidence level ('High', 'Medium', 'Low') in the salary research. Confidence is 'High' for well-known companies in major cities, and 'Low' for obscure companies or missing location data.
+
+        OUTPUT FORMAT:
+        7.  Return the output as a JSON array that strictly matches the provided schema. The array must have the same number of objects as the input array of students, in the same order.
         
         Student Data:
         ${studentDataString}
@@ -74,7 +86,7 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
         const jsonText = response?.text?.trim();
         if (!jsonText) {
             console.error("AI response was empty or invalid.");
-            return students.map(() => ({ placedRole: 'Error', placedCompany: 'AI Response Error', estimatedSalary: 'Error' }));
+            return students.map(() => ({ placedRole: 'Error', placedCompany: 'AI Response Error', estimatedSalary: 'Error', salaryJustification: 'N/A', salaryConfidence: 'N/A' }));
         }
         
         const placements = JSON.parse(jsonText);
@@ -85,7 +97,7 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
         } else {
             console.error("AI response mismatch:", placements);
             // Return an array of errors if the structure is wrong
-            return students.map(() => ({ placedRole: 'Error', placedCompany: 'AI Format Error', estimatedSalary: 'Error' }));
+            return students.map(() => ({ placedRole: 'Error', placedCompany: 'AI Format Error', estimatedSalary: 'Error', salaryJustification: 'N/A', salaryConfidence: 'N/A' }));
         }
     } catch (error) {
         console.error("Error calling Gemini API:", error);

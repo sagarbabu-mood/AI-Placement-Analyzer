@@ -91,7 +91,14 @@ const App: React.FC = () => {
                 const placementInfos = await analyzeStudentPlacementsBatch(batch, currentKey);
                 
                 const processedBatch = batch.map((student, index) => {
-                    return { ...student, ...(placementInfos[index] || { placedRole: 'Error', placedCompany: 'Processing Error', estimatedSalary: 'Error' }) };
+                    const defaultInfo = {
+                        placedRole: 'Error',
+                        placedCompany: 'Processing Error',
+                        estimatedSalary: 'Error',
+                        salaryJustification: 'N/A',
+                        salaryConfidence: 'N/A'
+                    };
+                    return { ...student, ...(placementInfos[index] || defaultInfo) };
                 });
 
                 setProcessedData(prev => [...prev, ...processedBatch]);

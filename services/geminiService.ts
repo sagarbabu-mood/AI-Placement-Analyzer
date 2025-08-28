@@ -8,7 +8,7 @@ const placementInfoSchema = {
         placedRole: { type: Type.STRING, description: "The specific job title. Should be 'Not Placed' if no suitable role is found." },
         placedCompany: { type: Type.STRING, description: "The name of the company. Should be 'Not Placed' if no role is found." },
         estimatedSalary: { type: Type.STRING, description: "The researched salary range in LPA (e.g., '8-10 LPA'). Should be 'N/A' if not placed." },
-        salaryJustification: { type: Type.STRING, description: "A brief justification for the salary research, considering company tier, location, and role. E.g., 'Tier-1 tech company in a major metro'. Should be 'N/A' if not placed." },
+        salaryJustification: { type: Type.STRING, description: "A brief justification for the salary research, considering company tier, location, role, and college reputation. E.g., 'Tier-1 tech company in a major metro for a Tier-1 college grad'. Should be 'N/A' if not placed." },
         salaryConfidence: { type: Type.STRING, description: "Confidence in the research ('High', 'Medium', 'Low') based on available data. Should be 'N/A' if not placed." },
     },
     required: ["placedRole", "placedCompany", "estimatedSalary", "salaryJustification", "salaryConfidence"],
@@ -20,7 +20,11 @@ const batchSchema = {
 };
 
 
-export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], apiKey: string): Promise<PlacementInfo[]> => {
+export const analyzeStudentPlacementsBatch = async (
+    students: StudentProfile[], 
+    apiKey: string, 
+    collegeName?: string
+): Promise<PlacementInfo[]> => {
     if (!apiKey) {
         throw new Error("API Key is missing. Please set it in the settings.");
     }
@@ -52,8 +56,13 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
         };
     }), null, 2);
 
+    const collegeContext = collegeName 
+        ? `The students are from: ${collegeName}. Consider the college's reputation (e.g., Tier-1, Tier-2, Tier-3) as a key factor in your analysis.`
+        : `The college name was not provided. Analyze based on the student's individual profile.`;
+
     const prompt = `
         You are an expert recruitment analyst specializing in tech and graduate placements in India. Your task is to perform a deep-dive analysis on the following student profiles.
+        ${collegeContext}
         Analyze the following array of student profiles. For each student, identify their first full-time post-graduation job.
         
         IMPORTANT RULES for PLACEMENT IDENTIFICATION:
@@ -62,8 +71,8 @@ export const analyzeStudentPlacementsBatch = async (students: StudentProfile[], 
 
         IMPORTANT RULES for SALARY RESEARCH (DEEP DIVE):
         3.  For each placed student, research and provide a likely salary range in Lakhs Per Annum (LPA).
-        4.  Your research MUST be based on a combination of factors: the company's reputation and tier (e.g., top product-based, service-based, startup), the job location (e.g., Bangalore and Hyderabad pay more than smaller cities), and the specific job role.
-        5.  Provide a brief justification for your salary research, explaining the factors you considered (e.g., 'Tier-1 tech company in a major metro').
+        4.  Your research MUST be based on a combination of factors: the company's reputation and tier (e.g., top product-based, service-based, startup), the job location (e.g., Bangalore and Hyderabad pay more than smaller cities), the specific job role, and the reputation of their college if provided.
+        5.  Provide a brief justification for your salary research, explaining the factors you considered (e.g., 'Tier-1 tech company in a major metro for a Tier-1 college graduate').
         6.  State your confidence level ('High', 'Medium', 'Low') in the salary research. Confidence is 'High' for well-known companies in major cities, and 'Low' for obscure companies or missing location data.
 
         OUTPUT FORMAT:

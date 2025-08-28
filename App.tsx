@@ -32,6 +32,7 @@ const getFriendlyErrorMessage = (error: any): string => {
 
 const App: React.FC = () => {
     const [file, setFile] = useState<File | null>(null);
+    const [collegeName, setCollegeName] = useState<string>('');
     const [originalData, setOriginalData] = useState<StudentProfile[]>([]);
     const [processedData, setProcessedData] = useState<ProcessedStudentProfile[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -76,7 +77,7 @@ const App: React.FC = () => {
         setCollegeReport(null);
     };
 
-    const processInBatches = async (data: StudentProfile[]) => {
+    const processInBatches = async (data: StudentProfile[], collegeName: string) => {
         const batchSize = 15;
         setProgress({ current: 0, total: data.length });
         let keyIndex = activeApiKeyIndex;
@@ -88,7 +89,7 @@ const App: React.FC = () => {
                 const currentKey = apiKeys[keyIndex];
                 if (!currentKey) throw new Error("All available API keys have failed.");
 
-                const placementInfos = await analyzeStudentPlacementsBatch(batch, currentKey);
+                const placementInfos = await analyzeStudentPlacementsBatch(batch, currentKey, collegeName);
                 
                 const processedBatch = batch.map((student, index) => {
                     const defaultInfo = {
@@ -154,7 +155,7 @@ const App: React.FC = () => {
                     setIsLoading(false);
                     return;
                 }
-                await processInBatches(dataToProcess);
+                await processInBatches(dataToProcess, collegeName);
                 setIsLoading(false);
             },
             error: (err: Error) => {
@@ -162,7 +163,7 @@ const App: React.FC = () => {
                 setIsLoading(false);
             }
         });
-    }, [file, apiKeys]);
+    }, [file, apiKeys, collegeName]);
 
     const handleDownload = () => {
         if (processedData.length === 0) {
@@ -397,15 +398,35 @@ const App: React.FC = () => {
 
                 {activeTab === 'analyzer' && (
                     <div className="space-y-8">
-                        <FileUpload 
-                            onFileChange={handleFileChange} 
-                            onProcess={handleProcess} 
-                            isLoading={isLoading} 
-                            disabled={!file}
-                            buttonText="Analyze Placements"
-                            buttonIcon={<AnalyzeIcon className="w-6 h-6" />}
-                            loadingText="Analyzing..."
-                        />
+                        <div className="p-6 bg-white dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div className="mb-6">
+                                <label htmlFor="college-name" className="block text-lg font-medium text-gray-800 dark:text-gray-200 mb-2">
+                                    College Name <span className="text-sm font-normal text-gray-500 dark:text-gray-400">(Optional)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="college-name"
+                                    value={collegeName}
+                                    onChange={(e) => setCollegeName(e.target.value)}
+                                    placeholder="e.g., Indian Institute of Technology, Bombay"
+                                    className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                    aria-describedby="college-name-description"
+                                />
+                                <p id="college-name-description" className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                    Providing a college name helps the AI perform more accurate salary research by considering the institution's reputation.
+                                </p>
+                            </div>
+
+                            <FileUpload 
+                                onFileChange={handleFileChange} 
+                                onProcess={handleProcess} 
+                                isLoading={isLoading} 
+                                disabled={!file}
+                                buttonText="Analyze Placements"
+                                buttonIcon={<AnalyzeIcon className="w-6 h-6" />}
+                                loadingText="Analyzing..."
+                            />
+                        </div>
                         
                         {isLoading && <ProgressBar current={progress.current} total={progress.total} />}
                         
